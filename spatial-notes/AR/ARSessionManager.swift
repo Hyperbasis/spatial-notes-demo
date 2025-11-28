@@ -25,6 +25,12 @@ class ARSessionManager: NSObject, ObservableObject {
     /// Error message if AR fails
     @Published var errorMessage: String?
 
+    /// Whether we're currently relocalizing
+    @Published var isRelocalizing: Bool = false
+
+    /// Whether relocalization completed successfully
+    @Published var isRelocalized: Bool = false
+
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
@@ -96,6 +102,32 @@ class ARSessionManager: NSObject, ObservableObject {
         config.planeDetection = [.horizontal, .vertical]
         arView.session.run(config)
     }
+
+    // MARK: - World Map
+
+    /// Gets the current world map from the AR session
+    func getCurrentWorldMap() async throws -> ARWorldMap {
+        return try await arView.session.currentWorldMap()
+    }
+
+    /// Checks if a world map can be captured
+    var canCaptureWorldMap: Bool {
+        guard case .normal = trackingState else { return false }
+        return surfaceDetected
+    }
+
+    /// Relocalizes the AR session using a saved world map
+    func relocalize(with worldMap: ARWorldMap) {
+        isRelocalizing = true
+        isRelocalized = false
+
+        let config = ARWorldTrackingConfiguration()
+        config.planeDetection = [.horizontal, .vertical]
+        config.environmentTexturing = .automatic
+        config.initialWorldMap = worldMap
+
+        arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+    }
 }
 
 // MARK: - ARSessionDelegate
@@ -109,6 +141,11 @@ extension ARSessionManager: ARSessionDelegate {
             switch camera.trackingState {
             case .normal:
                 self.errorMessage = nil
+                // Check if we were relocalizing
+                if self.isRelocalizing {
+                    self.isRelocalized = true
+                    self.isRelocalizing = false
+                }
             case .limited(let reason):
                 switch reason {
                 case .initializing:
@@ -118,7 +155,8 @@ extension ARSessionManager: ARSessionDelegate {
                 case .insufficientFeatures:
                     self.errorMessage = "Point at more textured surfaces"
                 case .relocalizing:
-                    self.errorMessage = "Relocalizing..."
+                    self.errorMessage = "Relocalizing - look around the room..."
+                    self.isRelocalizing = true
                 @unknown default:
                     self.errorMessage = "Limited tracking"
                 }

@@ -17,6 +17,9 @@ class ARViewModel: ObservableObject {
     /// The AR session manager
     let arManager: ARSessionManager
 
+    /// Persistence manager for saving/loading
+    let persistence: PersistenceManager
+
     /// All placed notes
     @Published private(set) var notes: [StickyNote] = []
 
@@ -32,14 +35,111 @@ class ARViewModel: ObservableObject {
     /// Pending note orientation
     @Published var pendingNoteOrientation: simd_quatf = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
 
+    /// Whether we have an active space
+    @Published var hasActiveSpace: Bool = false
+
+    /// Whether notes have been loaded
+    @Published var notesLoaded: Bool = false
+
     /// Map of note IDs to their entities
     private var noteEntities: [UUID: StickyNoteEntity] = [:]
+
+    private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
 
     init() {
         arManager = ARSessionManager()
+        persistence = PersistenceManager()
         setupTapGesture()
+        setupSubscriptions()
+
+        // Try to load existing space on launch
+        Task {
+            await loadExistingSpace()
+        }
+
+        // Listen for save world map notifications
+        NotificationCenter.default.addObserver(
+            forName: .saveWorldMap,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task {
+                await self?.saveWorldMap()
+            }
+        }
+    }
+
+    private func setupSubscriptions() {
+        // When relocalization completes, load the notes
+        arManager.$isRelocalized
+            .filter { $0 }
+            .sink { [weak self] _ in
+                Task {
+                    await self?.loadNotesAfterRelocalization()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Persistence
+
+    /// Loads existing space and attempts relocalization
+    private func loadExistingSpace() async {
+        do {
+            if let space = try await persistence.loadMostRecentSpace() {
+                hasActiveSpace = true
+
+                // Get the world map and relocalize
+                let worldMap = try space.arWorldMap()
+                arManager.relocalize(with: worldMap)
+
+                // Notes will be loaded after relocalization completes
+            }
+        } catch {
+            print("Failed to load space: \(error)")
+            // No existing space - start fresh
+        }
+    }
+
+    /// Loads notes after successful relocalization
+    private func loadNotesAfterRelocalization() async {
+        do {
+            let loadedNotes = try await persistence.loadNotes()
+
+            // Create entities for each note
+            for note in loadedNotes {
+                let entity = StickyNoteEntity(note: note)
+                noteEntities[note.id] = entity
+                arManager.addEntity(entity, at: note.position)
+            }
+
+            self.notes = loadedNotes
+            self.notesLoaded = true
+        } catch {
+            print("Failed to load notes: \(error)")
+        }
+    }
+
+    /// Creates or updates the space with current world map
+    func saveWorldMap() async {
+        guard arManager.canCaptureWorldMap else { return }
+
+        do {
+            let worldMap = try await arManager.getCurrentWorldMap()
+
+            if persistence.currentSpace == nil {
+                // First note - create space
+                _ = try await persistence.createSpace(name: nil, worldMap: worldMap)
+                hasActiveSpace = true
+            } else {
+                // Update existing space
+                try await persistence.updateSpace(worldMap: worldMap)
+            }
+        } catch {
+            print("Failed to save world map: \(error)")
+        }
     }
 
     // MARK: - Gesture Handling
@@ -122,6 +222,19 @@ class ARViewModel: ObservableObject {
         // Reset pending state
         pendingNotePosition = nil
         isShowingNoteInput = false
+
+        // Save to persistence
+        Task {
+            // Save world map first (creates space if needed)
+            await saveWorldMap()
+
+            // Then save the note
+            do {
+                try await persistence.saveNote(note)
+            } catch {
+                print("Failed to save note: \(error)")
+            }
+        }
     }
 
     /// Updates an existing note's text
@@ -129,9 +242,16 @@ class ARViewModel: ObservableObject {
         guard let index = notes.firstIndex(where: { $0.id == note.id }) else { return }
 
         notes[index].text = text
-
-        // Update entity
         noteEntities[note.id]?.updateText(text)
+
+        // Save to persistence
+        Task {
+            do {
+                try await persistence.updateNote(notes[index])
+            } catch {
+                print("Failed to update note: \(error)")
+            }
+        }
     }
 
     /// Updates an existing note's color
@@ -139,22 +259,37 @@ class ARViewModel: ObservableObject {
         guard let index = notes.firstIndex(where: { $0.id == note.id }) else { return }
 
         notes[index].color = color
-
-        // Update entity
         noteEntities[note.id]?.updateColor(color)
+
+        // Save to persistence
+        Task {
+            do {
+                try await persistence.updateNote(notes[index])
+            } catch {
+                print("Failed to update note color: \(error)")
+            }
+        }
     }
 
     /// Deletes a note
     func deleteNote(_ note: StickyNote) {
         notes.removeAll { $0.id == note.id }
 
-        // Remove entity
         if let entity = noteEntities[note.id] {
             arManager.removeEntity(entity)
             noteEntities.removeValue(forKey: note.id)
         }
 
         selectedNote = nil
+
+        // Delete from persistence
+        Task {
+            do {
+                try await persistence.deleteNote(id: note.id)
+            } catch {
+                print("Failed to delete note: \(error)")
+            }
+        }
     }
 
     /// Cancels note creation
@@ -167,4 +302,10 @@ class ARViewModel: ObservableObject {
     func deselectNote() {
         selectedNote = nil
     }
+}
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    static let saveWorldMap = Notification.Name("saveWorldMap")
 }

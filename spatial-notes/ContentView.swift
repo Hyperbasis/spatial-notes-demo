@@ -17,7 +17,9 @@ struct ContentView: View {
             // Overlay UI
             VStack {
                 // Top status bar
-                if let error = viewModel.arManager.errorMessage {
+                if viewModel.arManager.isRelocalizing {
+                    StatusBanner(message: "Finding your space - look around...", type: .info)
+                } else if let error = viewModel.arManager.errorMessage {
                     StatusBanner(message: error, type: .warning)
                 } else if !viewModel.arManager.surfaceDetected {
                     StatusBanner(message: "Look around to detect surfaces", type: .info)
@@ -25,10 +27,15 @@ struct ContentView: View {
 
                 Spacer()
 
-                // Instructions (when no notes)
-                if viewModel.notes.isEmpty && viewModel.arManager.surfaceDetected {
-                    InstructionBubble(text: "Tap anywhere to place a note")
-                        .padding(.bottom, 100)
+                // Instructions based on state
+                if viewModel.notes.isEmpty && viewModel.arManager.surfaceDetected && !viewModel.arManager.isRelocalizing {
+                    if viewModel.hasActiveSpace && !viewModel.notesLoaded {
+                        InstructionBubble(text: "Loading your notes...")
+                            .padding(.bottom, 100)
+                    } else {
+                        InstructionBubble(text: "Tap anywhere to place a note")
+                            .padding(.bottom, 100)
+                    }
                 }
 
                 // Bottom toolbar

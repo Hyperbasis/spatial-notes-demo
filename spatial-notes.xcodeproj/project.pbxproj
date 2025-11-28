@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		7DD5AA802EDA02B500B06746 /* Hyperbasis in Frameworks */ = {isa = PBXBuildFile; productRef = 7DD5AA812EDA02B500B06746 /* Hyperbasis */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		7DD5AA642EDA01B500B06746 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7DD5AA802EDA02B500B06746 /* Hyperbasis in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = "spatial-notes";
 			packageProductDependencies = (
+				7DD5AA812EDA02B500B06746 /* Hyperbasis */,
 			);
 			productName = "spatial-notes";
 			productReference = 7DD5AA562EDA01B400B06746 /* spatial-notes.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = 7DD5AA4D2EDA01B400B06746;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7DD5AA822EDA02B500B06746 /* XCLocalSwiftPackageReference "../../hyperbasis-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7DD5AA572EDA01B400B06746 /* Products */;
 			projectDirPath = "";
@@ -562,6 +571,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		7DD5AA822EDA02B500B06746 /* XCLocalSwiftPackageReference "../../hyperbasis-sdk" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../hyperbasis-sdk";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7DD5AA812EDA02B500B06746 /* Hyperbasis */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Hyperbasis;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 7DD5AA4E2EDA01B400B06746 /* Project object */;
 }
