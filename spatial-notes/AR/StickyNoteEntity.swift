@@ -18,6 +18,7 @@ class StickyNoteEntity: Entity, HasModel, HasCollision {
     // MARK: - Initialization
 
     /// Creates a sticky note entity
+    /// Note: Position is handled by the anchor - don't set world position here
     required init(note: StickyNote) {
         self.noteId = note.id
         super.init()
@@ -25,8 +26,8 @@ class StickyNoteEntity: Entity, HasModel, HasCollision {
         setupVisuals(text: note.text, color: note.color)
         setupCollision()
 
-        self.position = note.position
-        self.orientation = note.orientation
+        // Make the note always face the camera (billboard effect)
+        self.components.set(BillboardComponent())
     }
 
     @MainActor required init() {
