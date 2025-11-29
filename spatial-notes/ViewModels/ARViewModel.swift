@@ -5,6 +5,7 @@
 
 import SwiftUI
 import RealityKit
+import ARKit
 import Combine
 import simd
 
@@ -34,6 +35,9 @@ class ARViewModel: ObservableObject {
 
     /// Pending note orientation
     @Published var pendingNoteOrientation: simd_quatf = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+
+    /// Pending note surface transform (for stable anchoring)
+    private var pendingNoteTransform: simd_float4x4?
 
     /// Whether we have an active space
     @Published var hasActiveSpace: Bool = false
@@ -170,33 +174,38 @@ class ARViewModel: ObservableObject {
         // Otherwise, raycast to find surface
         if let result = arManager.raycast(from: location) {
             pendingNotePosition = result.position
-            pendingNoteOrientation = orientationFromNormal(result.normal)
+            pendingNoteTransform = result.transform
+            pendingNoteOrientation = orientationFacingCamera(from: result.position)
             isShowingNoteInput = true
         }
     }
 
-    /// Converts a surface normal to an orientation quaternion
-    private func orientationFromNormal(_ normal: SIMD3<Float>) -> simd_quatf {
-        // Default "forward" direction
-        let forward = SIMD3<Float>(0, 0, 1)
-
-        // Calculate rotation from forward to normal
-        let dot = simd_dot(forward, normal)
-        let cross = simd_cross(forward, normal)
-
-        if dot < -0.999999 {
-            // Vectors are opposite
-            return simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0))
-        }
-
-        let q = simd_quatf(
-            ix: cross.x,
-            iy: cross.y,
-            iz: cross.z,
-            r: 1 + dot
+    /// Creates an orientation that faces the camera while staying upright
+    private func orientationFacingCamera(from position: SIMD3<Float>) -> simd_quatf {
+        // Get camera position
+        let cameraTransform = arManager.arView.cameraTransform
+        let cameraPosition = SIMD3<Float>(
+            cameraTransform.matrix.columns.3.x,
+            cameraTransform.matrix.columns.3.y,
+            cameraTransform.matrix.columns.3.z
         )
 
-        return simd_normalize(q)
+        // Direction from note to camera (horizontal only for upright note)
+        var toCamera = cameraPosition - position
+        toCamera.y = 0  // Keep note upright by ignoring vertical component
+
+        // Handle edge case where camera is directly above/below
+        guard simd_length(toCamera) > 0.001 else {
+            return simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        }
+
+        toCamera = simd_normalize(toCamera)
+
+        // Calculate yaw angle (rotation around Y axis)
+        // Note's default forward is -Z, we want it to face toward camera
+        let angle = atan2(toCamera.x, toCamera.z)
+
+        return simd_quatf(angle: angle, axis: SIMD3<Float>(0, 1, 0))
     }
 
     // MARK: - Note Operations
@@ -214,13 +223,14 @@ class ARViewModel: ObservableObject {
 
         notes.append(note)
 
-        // Create and add entity
+        // Create and add entity with surface transform for stable anchoring
         let entity = StickyNoteEntity(note: note)
         noteEntities[note.id] = entity
-        arManager.addEntity(entity, at: position)
+        arManager.addEntity(entity, at: position, transform: pendingNoteTransform)
 
         // Reset pending state
         pendingNotePosition = nil
+        pendingNoteTransform = nil
         isShowingNoteInput = false
 
         // Save to persistence
@@ -295,12 +305,43 @@ class ARViewModel: ObservableObject {
     /// Cancels note creation
     func cancelNoteCreation() {
         pendingNotePosition = nil
+        pendingNoteTransform = nil
         isShowingNoteInput = false
     }
 
     /// Deselects the current note
     func deselectNote() {
         selectedNote = nil
+    }
+
+    /// Starts a new space - clears all notes and resets AR
+    func startNewSpace() {
+        // Remove all note entities from AR
+        for (_, entity) in noteEntities {
+            arManager.removeEntity(entity)
+        }
+        noteEntities.removeAll()
+        notes.removeAll()
+
+        // Clear persistence
+        try? persistence.clearAllData()
+
+        // Reset state
+        hasActiveSpace = false
+        notesLoaded = false
+        selectedNote = nil
+
+        // Restart AR session fresh
+        arManager.arView.session.run(
+            ARWorldTrackingConfiguration(),
+            options: [.resetTracking, .removeExistingAnchors]
+        )
+
+        // Re-setup AR
+        let config = ARWorldTrackingConfiguration()
+        config.planeDetection = [.horizontal, .vertical]
+        config.environmentTexturing = .automatic
+        arManager.arView.session.run(config)
     }
 }
 

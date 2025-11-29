@@ -7,13 +7,15 @@ import SwiftUI
 
 struct ToolbarView: View {
     let noteCount: Int
+    let onTap: () -> Void
 
     var body: some View {
-        HStack {
-            // Note count indicator
+        Button(action: onTap) {
             HStack(spacing: 6) {
                 Image(systemName: "note.text")
                 Text("\(noteCount)")
+                Image(systemName: "chevron.up")
+                    .font(.caption)
             }
             .font(.headline)
             .foregroundColor(.white)

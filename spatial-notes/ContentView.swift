@@ -7,6 +7,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel = ARViewModel()
+    @State private var isShowingNotesList = false
 
     var body: some View {
         ZStack {
@@ -39,8 +40,10 @@ struct ContentView: View {
                 }
 
                 // Bottom toolbar
-                ToolbarView(noteCount: viewModel.notes.count)
-                    .padding(.bottom, 30)
+                ToolbarView(noteCount: viewModel.notes.count) {
+                    isShowingNotesList = true
+                }
+                .padding(.bottom, 30)
             }
         }
         .sheet(isPresented: $viewModel.isShowingNoteInput) {
@@ -68,6 +71,21 @@ struct ContentView: View {
                 }
             )
             .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $isShowingNotesList) {
+            NotesListSheet(
+                notes: viewModel.notes,
+                onDelete: { note in
+                    viewModel.deleteNote(note)
+                },
+                onSelect: { note in
+                    viewModel.selectedNote = note
+                },
+                onNewSpace: {
+                    viewModel.startNewSpace()
+                }
+            )
+            .presentationDetents([.medium, .large])
         }
     }
 }

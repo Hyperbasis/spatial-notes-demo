@@ -59,8 +59,20 @@ class ARSessionManager: NSObject, ObservableObject {
     // MARK: - Public Methods
 
     /// Performs a raycast from screen point to find real-world surfaces
-    func raycast(from point: CGPoint) -> (position: SIMD3<Float>, normal: SIMD3<Float>)? {
-        let results = arView.raycast(from: point, allowing: .estimatedPlane, alignment: .any)
+    /// Returns the full transform for proper surface attachment
+    func raycast(from point: CGPoint) -> (position: SIMD3<Float>, transform: simd_float4x4)? {
+        // Try existing plane geometry first for best accuracy
+        var results = arView.raycast(from: point, allowing: .existingPlaneGeometry, alignment: .any)
+
+        // Fall back to existing plane infinite (extends beyond detected bounds)
+        if results.isEmpty {
+            results = arView.raycast(from: point, allowing: .existingPlaneInfinite, alignment: .any)
+        }
+
+        // Last resort: estimated plane
+        if results.isEmpty {
+            results = arView.raycast(from: point, allowing: .estimatedPlane, alignment: .any)
+        }
 
         guard let result = results.first else { return nil }
 
@@ -70,20 +82,26 @@ class ARSessionManager: NSObject, ObservableObject {
             result.worldTransform.columns.3.z
         )
 
-        let normal = SIMD3<Float>(
-            result.worldTransform.columns.2.x,
-            result.worldTransform.columns.2.y,
-            result.worldTransform.columns.2.z
-        )
-
-        return (position, normal)
+        return (position, result.worldTransform)
     }
 
-    /// Adds an entity to the AR scene
-    func addEntity(_ entity: Entity, at position: SIMD3<Float>) {
-        let anchor = AnchorEntity(world: position)
-        anchor.addChild(entity)
-        arView.scene.addAnchor(anchor)
+    /// Adds an entity to the AR scene anchored to a surface
+    func addEntity(_ entity: Entity, at position: SIMD3<Float>, transform: simd_float4x4? = nil) {
+        if let transform = transform {
+            // Create an ARAnchor at the exact raycast hit point for stable tracking
+            let arAnchor = ARAnchor(name: "note", transform: transform)
+            arView.session.add(anchor: arAnchor)
+
+            // Create AnchorEntity attached to the AR anchor
+            let anchorEntity = AnchorEntity(anchor: arAnchor)
+            anchorEntity.addChild(entity)
+            arView.scene.addAnchor(anchorEntity)
+        } else {
+            // Fallback for loaded notes without transform
+            let anchor = AnchorEntity(world: position)
+            anchor.addChild(entity)
+            arView.scene.addAnchor(anchor)
+        }
     }
 
     /// Removes an entity from the AR scene
