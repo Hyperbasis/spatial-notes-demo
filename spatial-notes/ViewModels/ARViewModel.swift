@@ -314,6 +314,17 @@ class ARViewModel: ObservableObject {
         selectedNote = nil
     }
 
+    /// Toggles debug mode
+    func toggleDebugMode() {
+        arManager.debugModeEnabled.toggle()
+    }
+
+    /// Debug mode binding for SwiftUI
+    var isDebugModeEnabled: Bool {
+        get { arManager.debugModeEnabled }
+        set { arManager.debugModeEnabled = newValue }
+    }
+
     /// Starts a new space - clears all notes and resets AR
     func startNewSpace() {
         // Remove all note entities from AR

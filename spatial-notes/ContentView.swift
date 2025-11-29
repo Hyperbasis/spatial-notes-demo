@@ -17,13 +17,48 @@ struct ContentView: View {
 
             // Overlay UI
             VStack {
-                // Top status bar
-                if viewModel.arManager.isRelocalizing {
-                    StatusBanner(message: "Finding your space - look around...", type: .info)
-                } else if let error = viewModel.arManager.errorMessage {
-                    StatusBanner(message: error, type: .warning)
-                } else if !viewModel.arManager.surfaceDetected {
-                    StatusBanner(message: "Look around to detect surfaces", type: .info)
+                // Top bar with debug toggle and status
+                HStack(alignment: .top) {
+                    // Debug toggle (top left)
+                    DebugToggleButton(isEnabled: viewModel.arManager.debugModeEnabled) {
+                        viewModel.toggleDebugMode()
+                    }
+                    .padding(.top, 60)
+
+                    Spacer()
+
+                    // Status banner (top center)
+                    VStack {
+                        if viewModel.arManager.isRelocalizing {
+                            StatusBanner(message: "Finding your space - look around...", type: .info)
+                        } else if let error = viewModel.arManager.errorMessage {
+                            StatusBanner(message: error, type: .warning)
+                        } else if !viewModel.arManager.surfaceDetected {
+                            StatusBanner(message: "Look around to detect surfaces", type: .info)
+                        }
+                    }
+                    .padding(.top, 60)
+
+                    Spacer()
+
+                    // Empty spacer to balance layout
+                    Color.clear.frame(width: 32, height: 32)
+                        .padding(.top, 60)
+                }
+                .padding(.horizontal, 16)
+
+                // Debug overlay (below toggle when enabled)
+                if viewModel.arManager.debugModeEnabled {
+                    HStack {
+                        DebugOverlayView(
+                            arManager: viewModel.arManager,
+                            noteCount: viewModel.notes.count
+                        )
+                        .padding(.leading, 16)
+                        .padding(.top, 8)
+
+                        Spacer()
+                    }
                 }
 
                 Spacer()
@@ -115,7 +150,6 @@ struct StatusBanner: View {
             .padding(.vertical, 8)
             .background(type.backgroundColor)
             .cornerRadius(20)
-            .padding(.top, 60)
     }
 }
 

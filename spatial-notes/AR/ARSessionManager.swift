@@ -31,6 +31,22 @@ class ARSessionManager: NSObject, ObservableObject {
     /// Whether relocalization completed successfully
     @Published var isRelocalized: Bool = false
 
+    /// Debug mode enabled
+    @Published var debugModeEnabled: Bool = false {
+        didSet {
+            updateDebugOptions()
+        }
+    }
+
+    /// Number of detected planes
+    @Published var planeCount: Int = 0
+
+    /// Number of tracked anchors
+    @Published var anchorCount: Int = 0
+
+    /// Current frame info
+    @Published var frameInfo: String = ""
+
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
@@ -54,6 +70,20 @@ class ARSessionManager: NSObject, ObservableObject {
 
     private func setupSubscriptions() {
         arView.session.delegate = self
+    }
+
+    private func updateDebugOptions() {
+        if debugModeEnabled {
+            // Show debug visualizations
+            arView.debugOptions = [
+                .showFeaturePoints,
+                .showWorldOrigin,
+                .showAnchorOrigins,
+                .showAnchorGeometry
+            ]
+        } else {
+            arView.debugOptions = []
+        }
     }
 
     // MARK: - Public Methods
@@ -186,6 +216,7 @@ extension ARSessionManager: ARSessionDelegate {
 
     nonisolated func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
         Task { @MainActor in
+            self.updateAnchorCounts(session: session)
             for anchor in anchors {
                 if anchor is ARPlaneAnchor {
                     self.surfaceDetected = true
@@ -195,9 +226,67 @@ extension ARSessionManager: ARSessionDelegate {
         }
     }
 
+    nonisolated func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+        Task { @MainActor in
+            self.updateAnchorCounts(session: session)
+        }
+    }
+
+    nonisolated func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
+        Task { @MainActor in
+            self.updateAnchorCounts(session: session)
+        }
+    }
+
+    nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        Task { @MainActor in
+            if self.debugModeEnabled {
+                self.updateFrameInfo(frame: frame)
+            }
+        }
+    }
+
     nonisolated func session(_ session: ARSession, didFailWithError error: Error) {
         Task { @MainActor in
             self.errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: - Debug Helpers
+
+    private func updateAnchorCounts(session: ARSession) {
+        guard let anchors = session.currentFrame?.anchors else { return }
+        self.planeCount = anchors.filter { $0 is ARPlaneAnchor }.count
+        self.anchorCount = anchors.count
+    }
+
+    private func updateFrameInfo(frame: ARFrame) {
+        let camera = frame.camera
+        let pos = camera.transform.columns.3
+
+        // World mapping status
+        let mappingStatus: String
+        switch frame.worldMappingStatus {
+        case .notAvailable: mappingStatus = "Not Available"
+        case .limited: mappingStatus = "Limited"
+        case .extending: mappingStatus = "Extending"
+        case .mapped: mappingStatus = "Mapped"
+        @unknown default: mappingStatus = "Unknown"
+        }
+
+        // Light estimate
+        let lightInfo: String
+        if let light = frame.lightEstimate {
+            lightInfo = String(format: "%.0f lux", light.ambientIntensity)
+        } else {
+            lightInfo = "N/A"
+        }
+
+        self.frameInfo = """
+        Pos: (\(String(format: "%.2f", pos.x)), \(String(format: "%.2f", pos.y)), \(String(format: "%.2f", pos.z)))
+        World Map: \(mappingStatus)
+        Light: \(lightInfo)
+        Features: \(frame.rawFeaturePoints?.points.count ?? 0)
+        """
     }
 }
